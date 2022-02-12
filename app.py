@@ -87,16 +87,63 @@ def parse(ticker):
     url = "https://stockanalysis.com/stocks/{}/financials/cash-flow-statement".format(ticker)
     response = requests.get(url, verify=False)
     parser = html.fromstring(response.content)
-    fcfs = parser.xpath('//table[contains(@id,"financial-table")]//tr[td/span/text()[contains(., "Free Cash Flow")]]')[0].xpath('.//td/span/text()')[1:]
-    last_fcf = float(fcfs[0].replace(',', ''))
+
+    # Cash Flows
+
+    op_fcfs = parser.xpath('//table[contains(@id,"financial-table")]//tr[td/span/text()[contains(., "Operating Cash Flow")]]')[0].xpath('.//td/span/text()')[1:]
+    capexs = parser.xpath('//table[contains(@id,"financial-table")]//tr[td/span/text()[contains(., "Capital Expenditures")]]')[0].xpath('.//td/span/text()')[1:]
+    dbt = parser.xpath('//table[contains(@id,"financial-table")]//tr[td/span/text()[contains(., "Debt Issued / Paid")]]')[0].xpath('.//td/span/text()')[1:]
+    net_income = parser.xpath('//table[contains(@id,"financial-table")]//tr[td/span/text()[contains(., "Net Income")]]')[0].xpath('.//td/span/text()')[1:]
+
+    op_fcfs = [float(x.replace(',', '')) for x in op_fcfs]
+    capexs = [float(x.replace(',', '')) for x in capexs]
+    dbt = [float(x.replace(',', '')) for x in dbt]
+    net_income = [float(x.replace(',', '')) for x in net_income]
+
+    fcfs_equity = list(np.array(op_fcfs) + np.array(capexs)) # + np.array(dbt) (difficult to predict when company will borrow money)
     
+    # Revenues
+
+    url = "https://stockanalysis.com/stocks/{}/financials".format(ticker)
+    response = requests.get(url, verify=False)
+    parser = html.fromstring(response.content)
+
+    revenues = parser.xpath('//table[contains(@id,"financial-table")]//tr[td/span/text()[contains(., "Revenue")]]')[0].xpath('.//td/span/text()')[1:]
+    revenues = [float(x.replace(',', '')) for x in revenues]
+
+    # Debt
+
+    url = "https://stockanalysis.com/stocks/{}/financials/balance-sheet".format(ticker)
+    response = requests.get(url, verify=False)
+    parser = html.fromstring(response.content)
+
+    net_debt = parser.xpath('//table[contains(@id,"financial-table")]//tr[td/span/text()[contains(., "Net Cash / Debt")]]')[0].xpath('.//td/span/text()')[1:]
+    net_debt = [float(x.replace(',', '')) for x in net_debt][0]
+
     url = "https://finance.yahoo.com/quote/{}/analysis?p={}".format(ticker, ticker)
     response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:20.0) Gecko/20100101 Firefox/20.0'})
     parser = html.fromstring(response.content)
-    ge = parser.xpath('//table//tbody//tr')
+    tables = parser.xpath('//table')
+
+    for t in tables:
+        if t.xpath("thead//tr//th/span/text()")[0] == 'Revenue Estimate':
+            vals = t.xpath("tbody//tr//td/span/text()")
+            ind = vals.index("Low Estimate")
+            res = [vals[ind - 2], vals[ind - 1]]
+            
+            for i in range(len(res)):
+                if 'B' in res[i]:
+                    res[i] = float(res[i].replace('B', ''))  * 1000
+                elif 'M'  in res[i]:
+                    res[i] = float(res[i].replace('M', ''))
+        
+            break
+
+    ge = tables[-1].xpath("tbody//tr")
 
     for row in ge:
         label = row.xpath("td/span/text()")[0]
+
         if 'Next 5 Years' in label:
             try:
                 ge = float(row.xpath("td/text()")[0].replace('%', ''))
@@ -118,21 +165,38 @@ def parse(ticker):
     parser = html.fromstring(response.content)
     eps = parser.xpath('//table[contains(@id,"financial-table")]//tr[td/span/text()[contains(., "EPS (Diluted)")]]')[0].xpath('.//td/span/text()')[1:]
     eps = float(eps[0].replace(",", ""))
-    
+
     try:
         market_price = float(parser.xpath('//div[@class="price-ext"]/text()')[0].replace('$', '').replace(',', ''))
     except:
         market_price = round(yfinance.Ticker(ticker).history().tail(1).Close.iloc[0], 2)
-    return {'fcf': last_fcf, 'ge': ge, 'yr': 5, 'dr': 10, 'pr': 2.5, 'shares': shares, 'eps': eps, 'mp': market_price}
+
+    return {'fcf': fcfs_equity, 'op_fcfs': op_fcfs, 'capexs': capexs, 'dbt': dbt, 'ni': net_income, 'revenues': revenues, 'nd': net_debt, 'res': res, 'ge': ge, 'yr': 5, 'dr': 10, 'pr': 2.5, 'shares': shares, 'eps': eps, 'mp': market_price}
 
 def dcf(data):
-    forecast = [data['fcf']]
+    fcf_ni_ratio = np.round(np.array(data['fcf']) / np.array(data['ni']), 2) * 100
+    ratio_to_use = min(fcf_ni_ratio[:3])
+
+    if ratio_to_use < 0:
+        raise ValueError("FCF / Net Income ratio not suitable. FCF is not inline with profitability.")
+
+    ni_margins = np.round(np.array(data['ni']) / np.array(data['revenues']), 2) * 100
+
+    forecast = [data['fcf'][1], data['fcf'][0]]
+    rev_forecast_df = [data['revenues'][0], data['res'][0], data['res'][1]]
+    net_income = [data['ni'][-1], data['ni'][0]]
 
     if data['ge'] == []:
     	raise ValueError("No growth rate available from Yahoo Finance")
 
     for i in range(1, data['yr']):
         forecast.append(round(forecast[-1] + (data['ge'] / 100) * forecast[-1], 2))
+        net_income.append(round(net_income[-1] + (data['ge'] / 100) * net_income[-1], 2))
+
+    for i in range(1, data['yr'] - 1):
+        rev_forecast_df.append(round(rev_forecast_df[-1] + (data['ge'] / 100) * rev_forecast_df[-1], 2))
+
+    rev_forecast_df = pd.DataFrame(np.array((rev_forecast_df, net_income)).T, columns=['Revenue estimate', 'Net Income'])
 
     forecast.append(round(forecast[-1] * (1 + (data['pr'] / 100)) / (data['dr'] / 100 - data['pr'] / 100), 2)) #terminal value
     discount_factors = [1 / (1 + (data['dr'] / 100))**(i + 1) for i in range(len(forecast) - 1)]
@@ -146,9 +210,11 @@ def dcf(data):
     st.markdown("### _Cash Flows_")
     st.line_chart(data=forecast_df)
 
-    dcf = sum(pvs)
-
+    dcf = sum(pvs) + data['nd']
     fv = round(dcf / data['shares'], 2)
+
+    st.markdown("### _Income_")
+    st.line_chart(data=rev_forecast_df)
 
     return fv
 
@@ -201,8 +267,9 @@ if __name__ == "__main__":
         pd_input_container.empty()
         compute_container.empty()
 
-
         data = parse(ticker)
+        if data['fcf'][0] < 0:
+            raise ValueError("Free Cash Flow is negative")
 
         if period is not None:
             data['yr'] = int(period)
