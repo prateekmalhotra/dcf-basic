@@ -1,2 +1,2 @@
 # DCF 
-Basic DCF model to quickly value public companies.
+Basic Discounted Cash Flow model to quickly value public companies.
