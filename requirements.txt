@@ -2,7 +2,6 @@ lxml
 requests
 pandas
 yfinance
-json
 streamlit
 numpy
 htbuilder
