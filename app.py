@@ -174,13 +174,18 @@ def parse(ticker):
     return {'fcf': fcfs_equity, 'op_fcfs': op_fcfs, 'capexs': capexs, 'dbt': dbt, 'ni': net_income, 'revenues': revenues, 'nd': net_debt, 'res': res, 'ge': ge, 'yr': 5, 'dr': 10, 'pr': 2.5, 'shares': shares, 'eps': eps, 'mp': market_price}
 
 def dcf(data):
-    fcf_ni_ratio = np.round(np.array(data['fcf']) / np.array(data['ni']), 2) * 100
+    fcf_ni_ratio = np.round(np.array(data['fcf'][:3]) / np.array(data['ni'][:3]), 2) * 100
     fcf_ni_ratio_deviation = np.std(fcf_ni_ratio)
+    fcf_ni_correlation = np.corrcoef(data['fcf'][:3], data['ni'][:3]) # Direction
 
     if data['fcf'][0] < 0:
         st.warning("Free Cash Flow is negative")
 
-    if fcf_ni_ratio_deviation > 20:
+    print(fcf_ni_ratio_deviation)
+    if fcf_ni_ratio_deviation > 40:
+        st.warning("Magnitude of change in FCF is not the same as that of Net Income. Fair Value might need more analysis from your side.")
+
+    if fcf_ni_correlation[0][1] < 0.9:
         st.warning("FCF is not inline with profitability. Fair Value might not be too reliable.")
 
     ni_margins = np.round(np.array(data['ni']) / np.array(data['revenues']), 2) * 100
@@ -216,7 +221,7 @@ def dcf(data):
     dcf = sum(pvs) + data['nd']
     fv = round(dcf / data['shares'], 2)
 
-    st.markdown("### _Income_")
+    st.markdown("### _Income_ ")
     st.line_chart(data=rev_forecast_df)
 
     return fv
