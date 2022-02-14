@@ -177,6 +177,9 @@ def dcf(data):
     fcf_ni_ratio = np.round(np.array(data['fcf']) / np.array(data['ni']), 2) * 100
     fcf_ni_ratio_deviation = np.std(fcf_ni_ratio)
 
+    if data['fcf'][0] < 0:
+        st.warning("Free Cash Flow is negative")
+
     if fcf_ni_ratio_deviation > 20:
         st.warning("FCF is not inline with profitability. Fair Value might not be too reliable.")
 
@@ -282,9 +285,6 @@ if __name__ == "__main__":
 
         if fcf_choice == "Average last 3 years":
             data['fcf'][0] = np.mean(data['fcf'][:3])
-
-        if data['fcf'][0] < 0:
-            st.warning("Free Cash Flow is negative")
 
         if period is not None:
             data['yr'] = int(period)
