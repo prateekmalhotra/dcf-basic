@@ -175,10 +175,10 @@ def parse(ticker):
 
 def dcf(data):
     fcf_ni_ratio = np.round(np.array(data['fcf']) / np.array(data['ni']), 2) * 100
-    ratio_to_use = min(fcf_ni_ratio[:3])
+    fcf_ni_ratio_deviation = np.std(fcf_ni_ratio)
 
-    if ratio_to_use < 0:
-        raise ValueError("FCF / Net Income ratio not suitable. FCF is not inline with profitability.")
+    if fcf_ni_ratio_deviation > 20:
+        st.warning("FCF is not inline with profitability. Fair Value might not be too reliable.")
 
     ni_margins = np.round(np.array(data['ni']) / np.array(data['revenues']), 2) * 100
 
@@ -245,7 +245,7 @@ if __name__ == "__main__":
     discount_rate = dr_input_container.number_input("Discount Rate (%)", min_value=0.0, max_value=100.0, format="%f", value=7.5, help="Insert discount rate (also called required rate of return)")
     
     ge_input_container = st.empty()
-    growth_estimate = ge_input_container.number_input("Growth Estimate (%)", min_value=-100.0, max_value=100.0, format="%f", help="Estimated yoy growth rate. Default: Fetched from Yahoo Finance")
+    growth_estimate = ge_input_container.number_input("Growth Estimate (%)", min_value=-100.0, max_value=100.0, format="%f", help="Estimated yoy growth rate. If left to -100, it will fetch from Yahoo Finance")
     
     tr_input_container = st.empty()
     terminal_rate = tr_input_container.number_input("Terminal Rate (%)", min_value=0.0, max_value=100.0, format="%f", help="Terminal growth rate.", value=2.5)
@@ -253,11 +253,19 @@ if __name__ == "__main__":
     pd_input_container = st.empty()
     period = pd_input_container.number_input("Time period (yrs)", min_value=0, max_value=10, format="%d", help="Time period for growth", value=5)
 
+    fcf_choice_container = st.empty()
+    fcf_choice = fcf_choice_container.selectbox("Initial FCF choice", ("Most Recent Free Cash Flow", "Average last 3 years", "Custom"), help="Chooses most recent FCF by default")
+
     yf_flag = True
     if growth_estimate != -100.0:
         yf_flag = False
 
+    st.text("")
     compute_container = st.empty()
+
+    if fcf_choice == "Custom":
+        fcf = fcf_choice_container.number_input("Free Cash Flow (Custom) in millions", format="%f")
+
     if compute_container.button("Compute DCF (basic) valuation"):
         
         ticker_input_container.empty()
@@ -266,10 +274,17 @@ if __name__ == "__main__":
         tr_input_container.empty()
         pd_input_container.empty()
         compute_container.empty()
+        fcf_choice_container.empty()
 
         data = parse(ticker)
+        if fcf_choice == "Custom":
+            data['fcf'][0] = fcf
+
+        if fcf_choice == "Average last 3 years":
+            data['fcf'][0] = np.mean(data['fcf'][:3])
+
         if data['fcf'][0] < 0:
-            raise ValueError("Free Cash Flow is negative")
+            st.warning("Free Cash Flow is negative")
 
         if period is not None:
             data['yr'] = int(period)
