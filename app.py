@@ -259,7 +259,7 @@ if __name__ == "__main__":
     terminal_rate = tr_input_container.number_input("Terminal Rate (%)", min_value=0.0, max_value=100.0, format="%f", help="Terminal growth rate.", value=2.5)
     
     pd_input_container = st.empty()
-    period = pd_input_container.number_input("Time period (yrs)", min_value=0, max_value=10, format="%d", help="Time period for growth", value=5)
+    period = pd_input_container.number_input("Time period (yrs)", min_value=0, max_value=25, format="%d", help="Time period for growth", value=5)
 
     fcf_choice_container = st.empty()
     fcf_choice = fcf_choice_container.selectbox("Initial FCF choice", ("Most Recent Free Cash Flow", "Average last 3 years", "Custom"), help="Chooses most recent FCF by default")
