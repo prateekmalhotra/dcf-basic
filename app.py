@@ -247,7 +247,7 @@ if __name__ == "__main__":
     st.title("Intrinsic Value Calculator")
     
     ticker_input_container = st.empty()
-    ticker = ticker_input_container.text_input("Ticker", max_chars=5, help="Inset ticker symbol for the company you wish to value", placeholder="AAPL", value="AAPL")
+    ticker = ticker_input_container.text_input("Ticker", max_chars=7, help="Inset ticker symbol for the company you wish to value", placeholder="AAPL", value="AAPL")
     
     dr_input_container = st.empty()
     discount_rate = dr_input_container.number_input("Discount Rate (%)", min_value=0.0, max_value=100.0, format="%f", value=7.5, help="Insert discount rate (also called required rate of return)")
